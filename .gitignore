@@ -1,0 +1,3 @@
+# Ignore IDE and cache files
+.idea/
+__pycache__/

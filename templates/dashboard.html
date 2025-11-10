@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI-Powered Warehouse Security Console</title>
+    <style>
+        body { font-family: sans-serif; }
+        .main-container { display: flex; gap: 20px; }
+        #left-panel { width: 620px; }
+        #right-panel { flex-grow: 1; }
+        .grid-container { display: grid; grid-template-columns: repeat(30, 20px); grid-template-rows: repeat(25, 20px); position: relative; border: 1px solid #ccc; }
+        .grid-item { width: 20px; height: 20px; box-sizing: border-box; }
+        .walkway { background-color: #f0f0f0; border: 1px solid #ddd; }
+        .restricted, .entrance, .safe, .camera { display: flex; align-items: center; justify-content: center; font-size: 10px; color: #333; }
+        .restricted { background-color: #ffcccc; }
+        .safe { background-color: #ccffcc; }
+        .camera { background-color: #ccccff; font-weight: bold; }
+        .entrance { background-color: #ffffcc; }
+        .grid-label { position: absolute; font-size: 10px; color: #555; pointer-events: none; transform: translate(-50%, -50%); text-align: center; width: auto; }
+        #person-marker { position: absolute; width: 18px; height: 18px; background-color: orange; border-radius: 50%; transition: all 0.5s linear; border: 2px solid darkorange; z-index: 10; display: none; }
+        .violation-popup { position: absolute; background: red; color: white; padding: 5px 10px; border-radius: 5px; z-index: 20; display: none; font-size: 14px; font-weight: bold; white-space: nowrap; border: 2px solid darkred; }
+        .incident { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; border-radius: 5px; background: #fff; }
+        .top-buttons { display: flex; gap: 10px; align-items: center; }
+        .header-btn { padding: 8px 15px; font-size: 14px; border-radius: 5px; border: none; color: white; cursor: pointer; text-decoration: none; }
+        #generate-btn { background-color: #007bff; }
+        #download-btn { background-color: #28a745; }
+        .play-btn { display: block; margin-top: 5px; cursor: pointer; background: #007bff; color: white; border: none; padding: 5px 10px; border-radius: 3px; }
+        .hidden { display: none; }
+        #ai-stats, #summary-section { font-size: 12px; color: #333; margin-top: 10px; border: 1px solid #ddd; padding: 10px; background: #f9f9f9; border-radius: 5px; }
+        #event-log, #reports { margin-top: 20px; max-height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; background: #f9f9f9; }
+        .event-item { padding: 4px 5px; border-bottom: 1px solid #eee; font-size: 12px; }
+        .event-item.violation { background-color: #ffdddd; }
+        strong { color: #000; }
+        .summary-details { margin-left: 20px; font-size: 11px; }
+    </style>
+</head>
+<body>
+    <h1>AI-Powered Warehouse Security Console</h1>
+    <div class="main-container">
+        <div id="left-panel">
+            <div id="warehouse-layout"><div class="grid-container"></div></div>
+            <div id="event-log" class="hidden"><h2>Event Log</h2><div id="log-content"></div></div>
+        </div>
+        <div id="right-panel">
+            <div class="top-buttons">
+                <button id="generate-btn" class="header-btn">Generate and Analyze Events</button>
+                <a href="/download" id="download-btn" class="header-btn hidden" download>Download Raw Data</a>
+            </div>
+            <div id="ai-stats" class="hidden"></div>
+            <div id="summary-section" class="hidden"><h2>Daily Summary</h2><div id="summary-content"></div></div>
+            <div id="reports" class="hidden"><h2>Incident Reports</h2><div id="incidents-list"></div></div>
+        </div>
+    </div>
+
+    <script>
+        const personData = {{ person_data | safe }};
+        let allEvents = [];
+        let allIncidents = [];
+
+        document.addEventListener("DOMContentLoaded", () => {
+            const warehouseGrid = document.querySelector(".grid-container");
+            const generateBtn = document.getElementById("generate-btn");
+            const downloadBtn = document.getElementById("download-btn");
+            const sections = {
+                incidentsList: document.getElementById("incidents-list"),
+                logContent: document.getElementById("log-content"),
+                aiStats: document.getElementById("ai-stats"),
+                summarySection: document.getElementById("summary-section"),
+                reports: document.getElementById("reports"),
+                eventLog: document.getElementById("event-log")
+            };
+
+            async function loadLayout() {
+                const response = await fetch("/layout");
+                warehouseGrid.innerHTML = await response.text() + '<div id="person-marker"></div><div id="violation-popup"></div>';
+            }
+
+            generateBtn.addEventListener("click", async () => {
+                generateBtn.disabled = true; generateBtn.textContent = "Analyzing...";
+                Object.values(sections).forEach(s => s.classList.add("hidden"));
+                downloadBtn.classList.add("hidden");
+
+                try {
+                    const response = await fetch("/generate_and_analyze", { method: "POST" });
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    const data = await response.json();
+                    allEvents = data.events; allIncidents = data.analysis;
+
+                    displayIncidents(allIncidents);
+                    displayEventLog(allEvents, allIncidents);
+                    displayUsageStats(data.usage_stats);
+                    displayDailySummary(data.daily_summary);
+
+                    Object.values(sections).forEach(s => s.classList.remove("hidden"));
+                    downloadBtn.classList.remove("hidden");
+                } catch (error) {
+                    console.error("Failed to generate and analyze events:", error);
+                    alert("An error occurred. Check the browser console for details.");
+                } finally {
+                    generateBtn.disabled = false; generateBtn.textContent = "Generate and Analyze Events";
+                }
+            });
+
+            function displayIncidents(incidents) {
+                sections.incidentsList.innerHTML = incidents.length ? "" : "<p>No incidents detected.</p>";
+                incidents.forEach(incident => {
+                    const incidentDiv = document.createElement("div");
+                    incidentDiv.className = "incident";
+                    const recommendationHTML = Array.isArray(incident.recommendation) ? `<ul>${incident.recommendation.map(item => `<li>${item}</li>`).join('')}</ul>` : incident.recommendation;
+                    incidentDiv.innerHTML = `<strong>Person:</strong> ${incident.person_name}<br>
+                        <strong>Risk Score:</strong> <span style="color: red; font-weight: bold;">${incident.risk_score}</span><br>
+                        <strong>Issues:</strong> ${incident.issues}<br>
+                        <strong>Narrative:</strong> ${incident.summary}<br>
+                        <strong>Recommendations:</strong> ${recommendationHTML}
+                        <button class="play-btn" data-person-name="${incident.person_name}">&#9654; Play Replay</button>`;
+                    sections.incidentsList.appendChild(incidentDiv);
+                });
+            }
+
+            function displayEventLog(events, incidents) {
+                sections.logContent.innerHTML = "";
+                const eventsByPerson = {};
+                for (const name in personData) { eventsByPerson[name] = []; }
+                events.forEach(e => { if(eventsByPerson[e.person_name]) eventsByPerson[e.person_name].push(e); });
+
+                for (const personName in eventsByPerson) {
+                    const personHeader = document.createElement("h4");
+                    personHeader.innerHTML = `Person: ${personName} <span style="font-weight:normal; font-size: 12px;">(Authorized: ${personData[personName].join(', ') || 'None'})</span>`;
+                    sections.logContent.appendChild(personHeader);
+
+                    eventsByPerson[personName].forEach(event => {
+                        const eventDiv = document.createElement("div");
+                        eventDiv.className = "event-item";
+                        
+                        if ((event.event_type === 'person_entered' && !event.authorized) || 
+                            (event.event_type === 'person_exited' && event.duration_minutes > event.allowed_minutes)) {
+                            eventDiv.classList.add("violation");
+                        }
+
+                        let durationInfo = "";
+                        if(event.event_type === 'person_exited' && event.duration_minutes) {
+                            durationInfo = ` | Stayed: ${event.duration_minutes}m (Allowed: ${event.allowed_minutes}m)`;
+                        }
+                        eventDiv.innerHTML = `${event.timestamp} | <strong>${event.event_type}</strong> in ${event.zone}${durationInfo}`;
+                        sections.logContent.appendChild(eventDiv);
+                    });
+                }
+            }
+
+            function displayUsageStats(stats) {
+                if (!stats) return;
+                sections.aiStats.innerHTML = `<strong>Model:</strong> ${stats.model}<br>
+                    <strong>Tokens:</strong> ${stats.total_tokens} (Input: ${stats.input_tokens}, Output: ${stats.output_tokens})<br>
+                    <strong>Cost:</strong> $${stats.total_cost} (Input: $${stats.input_cost}, Output: $${stats.output_cost})`;
+            }
+
+            function displayDailySummary(summary) {
+                const summaryContent = document.getElementById("summary-content");
+                if (!summary || !summary.summary) {
+                    summaryContent.innerHTML = "<p>Could not generate daily summary.</p>";
+                    return;
+                }
+
+                let summaryHTML = "";
+                if (summary.summary && typeof summary.summary === 'object') {
+                    const idToNameMap = Object.fromEntries(allEvents.map(e => [e.person_id, e.person_name]));
+                    summaryHTML += "<strong>Analytical Overview:</strong><ul>";
+                    
+                    const offenders = summary.summary.offenders || summary.summary.repeat_offenders;
+                    if (offenders && Array.isArray(offenders)) {
+                        summaryHTML += `<li>Offenders:<ul>`;
+                        offenders.forEach(offender => {
+                            const name = idToNameMap[offender.person_id] || offender.person_id;
+                            const violations = offender.violations.join(', ');
+                            summaryHTML += `<li>${name} (${violations})</li>`;
+                        });
+                        summaryHTML += `</ul></li>`;
+                    }
+                    
+                    if (summary.summary.hot_spot_zones) summaryHTML += `<li>Hot Spot Zones: ${summary.summary.hot_spot_zones.join(', ')}</li>`;
+                    if (summary.summary.common_violations) summaryHTML += `<li>Common Violations: ${summary.summary.common_violations.join(', ')}</li>`;
+                    summaryHTML += "</ul>";
+                } else {
+                    summaryHTML = `<strong>Summary:</strong> ${summary.summary}<br>`;
+                }
+
+                let itemsHTML = "";
+                if (Array.isArray(summary.actionable_items)) {
+                    itemsHTML += "<strong>Actionable Items:</strong><ul>";
+                    summary.actionable_items.forEach(item => {
+                        if (typeof item === 'object' && item.action) {
+                            itemsHTML += `<li><strong>${item.action}</strong>`;
+                            const details = item.details ? `<div class="summary-details">${item.details}</div>` : "";
+                            itemsHTML += details + '</li>';
+                        } else {
+                            itemsHTML += `<li>${item}</li>`;
+                        }
+                    });
+                    itemsHTML += "</ul>";
+                }
+                summaryContent.innerHTML = summaryHTML + itemsHTML;
+            }
+
+            sections.incidentsList.addEventListener("click", (e) => {
+                if (e.target.classList.contains("play-btn")) {
+                    const personName = e.target.dataset.personName;
+                    const personEvents = allEvents.filter(ev => ev.person_name === personName);
+                    const incident = allIncidents.find(inc => inc.person_name === personName);
+                    animatePath(personEvents, incident);
+                }
+            });
+
+            async function animatePath(path, incident) {
+                const marker = document.getElementById('person-marker');
+                const popup = document.getElementById('violation-popup');
+                if(!marker || !popup) return;
+                marker.style.display = 'block';
+                for (const event of path) {
+                    if (!event.coords) continue;
+                    const [r, c] = event.coords;
+                    marker.style.top = (r * 20 + 1) + 'px';
+                    marker.style.left = (c * 20 + 1) + 'px';
+
+                    let violationText = null;
+                    if (incident && event.event_type === 'person_entered' && incident.issues.includes("unauthorized_access") && !event.authorized) {
+                        violationText = "Unauthorized Access";
+                    } else if (incident && event.event_type === 'person_exited' && incident.issues.includes("loitering") && event.duration_minutes > event.allowed_minutes) {
+                        violationText = "Loitering Detected";
+                    }
+
+                    if (violationText) {
+                        popup.textContent = violationText;
+                        popup.style.left = (c * 20 + 25) + 'px';
+                        popup.style.top = (r * 20) + 'px';
+                        popup.style.display = 'block';
+                        await new Promise(resolve => setTimeout(resolve, 2500));
+                        popup.style.display = 'none';
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 600));
+                }
+                marker.style.display = 'none';
+            }
+
+            loadLayout();
+        });
+    </script>
+</body>
+</html>
