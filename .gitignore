@@ -1,3 +1,4 @@
 # Ignore IDE and cache files
 .idea/
 __pycache__/
+data/token

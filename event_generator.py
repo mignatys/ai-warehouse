@@ -1,6 +1,7 @@
 import random
 import datetime
 import json
+import os
 from config import RESTRICTED_AREAS, RULES
 
 PERSONS = [
@@ -88,5 +89,6 @@ def generate_synthetic_dataset(num_events_per_person=2):
 
 def save_dataset(dataset, filename="data/warehouse_events.json"):
     # Saves the dataset to a JSON file.
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
     with open(filename, "w") as f:
         json.dump(dataset, f, indent=2)

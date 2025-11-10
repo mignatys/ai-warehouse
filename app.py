@@ -17,6 +17,7 @@ templates = Jinja2Templates(directory="templates")
 
 def _create_debug_dumps(analysis_result):
     """Helper function to create all data dumps for debugging."""
+    os.makedirs("data/", exist_ok=True)
     # 1. Create the aggregated AI input data
     ai_input_prompts = {}
     events_by_person = {}
