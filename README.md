@@ -52,8 +52,6 @@ Stored API keys securely in environment variables.
 
 Encrypted data in transit.
 
-Complied with privacy regulations like GDPR and HIPAA.
-
 ### **8. Cost Management**
 
 Optimized requests by batching when possible.
